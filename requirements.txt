@@ -1,0 +1,6 @@
+streamlit
+google-generativeai
+gTTS
+reportlab
+SpeechRecognition
+pyaudio
