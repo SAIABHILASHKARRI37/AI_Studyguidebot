@@ -6,10 +6,14 @@ import os
 from textwrap import wrap
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+import sounddevice as sd
+import numpy as np
+from scipy.io.wavfile import write
 import speech_recognition as sr
-import re  # ✅ Added for text cleanup
+import re
+import tempfile
 
-# ✅ Updated Gemini API key configuration
+# Configure Gemini API
 genai.configure(api_key="AIzaSyCa5LqygtZkpVTYGpsqfCQK6xGTwlR4cSY")
 
 LABELS = {
@@ -71,7 +75,6 @@ Answer:"""
     return response.text
 
 def clean_text_for_tts(text):
-    # ✅ Remove hashtags and extra symbols that cause TTS issues
     return re.sub(r'#\S+', '', text).strip()
 
 def text_to_speech(text, language, filename="response.mp3"):
@@ -105,22 +108,30 @@ def generate_pdf(text):
     c.save()
     return filename
 
-recognizer = sr.Recognizer()
-
 def listen_for_input(language_code):
-    with sr.Microphone() as source:
-        st.session_state.listening_status = "🎙 Listening..."
-        st.session_state.update()
-        recognizer.adjust_for_ambient_noise(source)
-        audio = recognizer.listen(source)
+    fs = 16000  # Sample rate
+    duration = 5  # seconds
+
+    st.session_state.listening_status = "🎙 Listening..."
+    st.session_state.update()
+
     try:
-        st.session_state.listening_status = "🧠 Processing..."
-        st.session_state.update()
-        if language_code == "te":
-            language_code = "te-IN"
-        text = recognizer.recognize_google(audio, language=language_code)
-        st.session_state.listening_status = f"✅ Recognized: {text}"
-        return text
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
+            audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype='int16')
+            sd.wait()
+            write(temp_wav.name, fs, audio)
+
+            st.session_state.listening_status = "🧠 Processing..."
+            st.session_state.update()
+
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(temp_wav.name) as source:
+                audio_data = recognizer.record(source)
+                if language_code == "te":
+                    language_code = "te-IN"
+                text = recognizer.recognize_google(audio_data, language=language_code)
+                st.session_state.listening_status = f"✅ Recognized: {text}"
+                return text
     except sr.UnknownValueError:
         st.session_state.listening_status = "❌ Couldn't understand."
     except sr.RequestError:
@@ -148,21 +159,6 @@ def main():
             }
             .chat-container {
                 display: flex; flex-direction: column; gap: 10px;
-            }
-            .stTextInput>div>div>input {
-                padding-left: 2.5rem;
-            }
-            .icon-overlay {
-                position: relative;
-            }
-            .icon-left {
-                position: absolute;
-                left: 10px;
-                top: 50%;
-                transform: translateY(-50%);
-                font-size: 20px;
-                cursor: pointer;
-                z-index: 2;
             }
         </style>
     """, unsafe_allow_html=True)
